@@ -38,29 +38,32 @@ if not defined SYSTEM_PY (
 )
 
 echo Encontrado interpretador: %SYSTEM_PY%
-rem Se .venv existir, chama sub-rotina que tenta removê-lo (retries / taskkill / PowerShell)
 if exist ".venv" (
-  echo .venv existente -> iniciando procedimento de remocao...
-  call :remove_venv
-)
-
-echo Criando virtual environment .venv usando %SYSTEM_PY% ...
-%SYSTEM_PY% -m venv .venv
-
-set "VENV_PY=.venv\Scripts\python.exe"
-if exist "%VENV_PY%" (
-  set "PY=%VENV_PY%"
-)
-if not defined PY (
-  rem usa o comando sistema detectado anteriormente
-  set "PY=%SYSTEM_PY%"
+  echo .venv existente -> ativando sem recriar...
+  set "VENV_PY=.venv\Scripts\python.exe"
+  if exist "%VENV_PY%" (
+    set "PY=%VENV_PY%"
+  ) else (
+    echo ATENCAO: .venv existe, mas %VENV_PY% nao encontrado. Usando %SYSTEM_PY%.
+    set "PY=%SYSTEM_PY%"
+  )
+) else (
+  echo Criando virtual environment .venv usando %SYSTEM_PY% ...
+  %SYSTEM_PY% -m venv .venv
+  set "VENV_PY=.venv\Scripts\python.exe"
+  if exist "%VENV_PY%" (
+    set "PY=%VENV_PY%"
+  )
+  if not defined PY (
+    set "PY=%SYSTEM_PY%"
+  )
+  echo Usando interpretador: %PY%
+  echo Installing dependencies...
+  %PY% -m pip install --upgrade pip >nul
+  %PY% -m pip install -r requirements.txt
 )
 
 echo Usando interpretador: %PY%
-echo Installing dependencies...
-%PY% -m pip install --upgrade pip >nul
-%PY% -m pip install -r requirements.txt
-
 echo Running MonitCam (Ctrl+C to stop)...
 %PY% main.py
 
