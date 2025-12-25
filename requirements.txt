@@ -1,0 +1,6 @@
+# Minimal requirements for MonitCam
+pyautogui
+opencv-python
+numpy
+pillow
+pywin32
