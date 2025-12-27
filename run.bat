@@ -66,36 +66,3 @@ if exist ".venv" (
 echo Usando interpretador: %PY%
 echo Running MonitCam (Ctrl+C to stop)...
 %PY% main.py
-
-rem -------------------------------------------------------------------------
-:remove_venv
-rem tenta remover .venv com retries; se falhar, permite ao usuario retentar ou abortar
-set "RM_TRIES=0"
-:remove_loop
-set /A RM_TRIES+=1
-echo Tentativa %RM_TRIES%: removendo .venv ...
-rmdir /S /Q ".venv" >nul 2>nul
-if %ERRORLEVEL%==0 goto :remove_done
-echo rmdir falhou. Finalizando processos python e tentando PowerShell...
-taskkill /IM python.exe /F >nul 2>nul
-taskkill /IM python3.exe /F >nul 2>nul
-powershell -Command "Remove-Item -Recurse -Force '.venv'" >nul 2>nul
-if %ERRORLEVEL%==0 goto :remove_done
-if %RM_TRIES% LSS 4 (
-  echo Tentativa %RM_TRIES% falhou; aguardando 1s e tentando novamente...
-  timeout /t 1 >nul
-  goto :remove_loop
-)
-echo Nao foi possivel remover .venv apos %RM_TRIES% tentativas.
-choice /c RT /n /m "R=Retentar  T=Terminar (abort) "
-if %ERRORLEVEL%==1 (
-  echo Usuario escolheu retentar...
-  goto :remove_loop
-) else (
-  echo Abortando execucao. Remova .venv manualmente e reexecute.
-  exit /b 1
-)
-:remove_done
-echo .venv removido com sucesso.
-goto :eof
-rem -------------------------------------------------------------------------

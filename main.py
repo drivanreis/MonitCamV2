@@ -13,31 +13,16 @@ import time
 from datetime import datetime
 import os
 import sys
-import argparse
+
 import logging
 import traceback
 
 import config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
-                    handlers=[logging.StreamHandler(), logging.FileHandler("monitcam.log", encoding="utf-8")])
+                    handlers=[logging.StreamHandler(), logging.FileHandler(config.LOG_FILE, encoding="utf-8")])
 
-def parse_args():
-    p = argparse.ArgumentParser(description="MonitCam - monitor de mudança em região da tela")
-    default_region = ",".join(map(str, config.CAPTURE_IMG))
-    p.add_argument("--region", default=default_region,
-                   help=f"Região a monitorar no formato x,y,w,h (padrão: {default_region})")
-    p.add_argument("--sensitivity", type=int, default=config.SENSIBILIDADE,
-                   help=f"Número mínimo de pixels mudados para considerar movimento (padrão: {config.SENSIBILIDADE})")
-    p.add_argument("--interval", type=float, default=config.INTERVAL,
-                   help=f"Intervalo em segundos entre capturas (padrão: {config.INTERVAL})")
-    return p.parse_args()
 
-def region_from_str(s):
-    parts = [int(x) for x in s.split(",")]
-    if len(parts) != 4:
-        raise ValueError("region deve ser: x,y,w,h")
-    return tuple(parts)
 
 def choose_backend():
     """Prefer mss (se disponível), fallback para pyautogui."""
@@ -140,67 +125,68 @@ def ensure_frame_size(img, target_w, target_h):
 
 print("Iniciando monitoramento... Pressione Ctrl+C para parar.")
 
-def run_monitor(region_rel, sensitivity, interval):
+def run_monitor():
     backend = choose_backend()
 
-    # Regiões finais (use CLI region override para CAPTURE_IMG; COMPARE_IMG é fixa no código)
-    cap_region = clamp_region_to_screen(region_rel)
+    # Regiões de captura e comparação
+    cap_region = clamp_region_to_screen(config.CAPTURE_IMG)
     cmp_region = clamp_region_to_screen(config.COMPARE_IMG)
+    
     logging.info("Usando CAPTURE_IMG=%s COMPARE_IMG=%s sensitivity=%d interval=%.3f",
-                 cap_region, cmp_region, sensitivity, interval)
+                 cap_region, cmp_region, config.SENSIBILIDADE, config.INTERVAL)
 
-    # primeiras capturas (ambas)
+    # Captura inicial para estabelecer uma referência
     ultimo_cmp = capture_frame(cmp_region, backend)
+    
     while True:
-        # captura A (gravaremos se houver evento) e B (usada para detectar movimento)
+        # Captura a imagem de contexto (A) e a imagem de comparação (B)
         frame_A = capture_frame(cap_region, backend)
         frame_B = capture_frame(cmp_region, backend)
 
-        # compara apenas B
+        # Compara a imagem de comparação atual com a anterior
         diferenca = cv2.absdiff(ultimo_cmp, frame_B)
-        diferenca_blur = cv2.GaussianBlur(diferenca, (5,5), 0)
-        _, diferenca_thresh = cv2.threshold(diferenca_blur, 25, 255, cv2.THRESH_BINARY)
-
-        
+        diferenca_blur = cv2.GaussianBlur(diferenca, config.BLUR_KERNEL_SIZE, 0)
+        _, diferenca_thresh = cv2.threshold(diferenca_blur, config.DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
 
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, config.MORPH_KERNEL)
         diferenca_thresh = cv2.morphologyEx(diferenca_thresh, cv2.MORPH_OPEN, kernel)
         score = int(cv2.countNonZero(diferenca_thresh))
 
-        if score > sensitivity:
+        if score > config.SENSIBILIDADE:
             horario = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-            logging.info("Movimento detectado na COMPARE_IMG! score=%d -> salvando A/B", score)
-            os.makedirs("captures", exist_ok=True)
-            arquivoA = os.path.join("captures", f"suspeito_{horario}_A.png")
-            arquivoB = os.path.join("captures", f"suspeito_{horario}_B.png")
+            logging.info("Movimento detectado na COMPARE_IMG! score=%d -> salvando...", score)
+            
+            os.makedirs(config.CAPTURE_DIR, exist_ok=True)
+            
+            arquivoA = os.path.join(config.CAPTURE_DIR, f"{config.FILENAME_PREFIX}_{horario}_A.png")
             cv2.imwrite(arquivoA, frame_A)
-            cv2.imwrite(arquivoB, frame_B)
-            logging.info("Salvos: %s , %s", arquivoA, arquivoB)
-            # atualiza referência e aguarda um pouco para evitar ruído repetido
+            logging.info("Salvo: %s", arquivoA)
+
+            if config.SAVE_COMPARE_IMG:
+                arquivoB = os.path.join(config.CAPTURE_DIR, f"{config.FILENAME_PREFIX}_{horario}_B.png")
+                cv2.imwrite(arquivoB, frame_B)
+                logging.info("Salvo: %s", arquivoB)
+
+            # Atualiza referência e aguarda para evitar ruído repetido
             ultimo_cmp = frame_B
-            time.sleep(interval * 2)
+            time.sleep(config.INTERVAL * 2)
             continue
 
         ultimo_cmp = frame_B
-        time.sleep(interval)
+        time.sleep(config.INTERVAL)
 
 
 def main():
-    args = parse_args()
-    region_rel = region_from_str(args.region)
-    sensitivity = args.sensitivity
-    interval = args.interval
-
     delay = config.RESTART_BASE_DELAY
     while True:
         try:
-            run_monitor(region_rel, sensitivity, interval)
+            run_monitor()
         except KeyboardInterrupt:
             logging.info("Monitor interrompido pelo usuário.")
             break
         except Exception as e:
             logging.error("Erro fatal no monitor: %s", e)
-            with open("monitcam_error.log", "a", encoding="utf-8") as f:
+            with open(config.ERROR_LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(f"{datetime.now().isoformat()} - Exception:\n")
                 traceback.print_exc(file=f)
                 f.write("\n")

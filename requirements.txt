@@ -4,3 +4,4 @@ opencv-python
 numpy
 pillow
 pywin32
+mss
