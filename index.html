@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MonitCamV2 - Painel de Controle</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Overlay de Carregamento -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p>Carregando configurações...</p>
+        </div>
+    </div>
+
+    <!-- Overlay de Contagem Regressiva -->
+    <div id="countdown-overlay" class="countdown-overlay">
+        <div class="countdown-content">
+            <div class="countdown-message">Prepare a janela alvo!</div>
+            <div class="countdown-number" id="countdown-number">3</div>
+            <div class="countdown-submessage">A seleção começará em <span id="countdown-seconds">3</span> segundos...</div>
+        </div>
+    </div>
+
+    <div class="container" id="main-container" style="opacity: 0;">
+        <header>
+            <h1>MonitCamV2</h1>
+            <p>Painel de Controle</p>
+        </header>
+
+        <div class="status-bar">
+            <span>Status:</span>
+            <span id="status-indicator" class="status-stopped">Parado</span>
+            <div class="controls">
+                <button id="start-btn">▶ Iniciar</button>
+                <button id="stop-btn" disabled>■ Parar</button>
+            </div>
+        </div>
+
+        <main>
+            <h2>Configurações</h2>
+            <form id="config-form">
+                <div class="form-grid">
+                    <!-- Coluna 1 -->
+                    <div class="form-column">
+                        <div class="form-group">
+                            <label for="SENSIBILIDADE">Sensibilidade da Detecção</label>
+                            <input type="number" id="SENSIBILIDADE" name="SENSIBILIDADE">
+                            <small>Mais pixels para detectar. (Padrão: 1000)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="INTERVAL">Intervalo entre Capturas (s)</label>
+                            <input type="number" step="0.01" id="INTERVAL" name="INTERVAL">
+                            <small>Segundos. Menor = mais uso de CPU. (Padrão: 0.32)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="DELAY_SELECAO">Tempo de Espera (Seleção)</label>
+                            <input type="number" step="0.5" id="DELAY_SELECAO" name="DELAY_SELECAO">
+                            <small>Segundos antes de iniciar a seleção. (Padrão: 3)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="DIFF_THRESHOLD">Limiar de Diferença</label>
+                            <input type="number" id="DIFF_THRESHOLD" name="DIFF_THRESHOLD">
+                            <small>Quão diferente o pixel deve ser. (Padrão: 25)</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="CAPTURE_DIR">Diretório de Capturas</label>
+                            <input type="text" id="CAPTURE_DIR" name="CAPTURE_DIR">
+                            <small>Pasta para salvar as imagens.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="FILENAME_PREFIX">Prefixo do Arquivo</label>
+                            <input type="text" id="FILENAME_PREFIX" name="FILENAME_PREFIX">
+                            <small>Nome inicial dos arquivos salvos.</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Coluna 2 -->
+                    <div class="form-column">
+                        <div class="form-group">
+                            <label for="CAPTURE_IMG">Região de Captura (x,y,w,h)</label>
+                            <input type="text" id="CAPTURE_IMG" name="CAPTURE_IMG">
+                            <button id="pega-area-total-btn">Pegar Área Total</button>
+                            <small>Área total a ser salva.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="COMPARE_IMG">Região de Comparação (x,y,w,h)</label>
+                            <input type="text" id="COMPARE_IMG" name="COMPARE_IMG">
+                            <button id="pega-area-detec-btn">Pegar Área Detecção</button>
+                            <small>Área onde o movimento é detectado.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="BLUR_KERNEL_SIZE">Kernel de Desfoque (w,h)</label>
+                            <input type="text" id="BLUR_KERNEL_SIZE" name="BLUR_KERNEL_SIZE">
+                            <small>Números ímpares. Reduz ruído. (Padrão: 5,5)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="MORPH_KERNEL">Kernel de Morfologia (w,h)</label>
+                            <input type="text" id="MORPH_KERNEL" name="MORPH_KERNEL">
+                            <small>Remove falsos positivos. (Padrão: 3,3)</small>
+                        </div>
+
+                        <div class="form-group-checkbox">
+                            <label for="SAVE_COMPARE_IMG">Salvar Imagem de Comparação?</label>
+                            <input type="checkbox" id="SAVE_COMPARE_IMG" name="SAVE_COMPARE_IMG">
+                        </div>
+
+                         <div class="form-group-checkbox">
+                            <label for="SAVE_LOGS">Salvar Logs em Arquivo?</label>
+                            <input type="checkbox" id="SAVE_LOGS" name="SAVE_LOGS">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" id="save-btn" disabled>Salvar Alterações</button>
+                    <span id="save-status"></span>
+                </div>
+            </form>
+        </main>
+
+        <footer>
+            <p>MonitCamV2 | Interface Gráfica Local</p>
+        </footer>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

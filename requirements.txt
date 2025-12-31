@@ -5,3 +5,4 @@ numpy
 pillow
 pywin32
 mss
+flask

@@ -1,37 +1,82 @@
 import cv2
 import numpy as np
 import pyautogui
-
-# Optional faster, lower-memory screenshot backend (install via `pip install mss`).
-try:
-    import mss
-    import mss.tools
-except Exception:
-    mss = None
-
 import time
 from datetime import datetime
 import os
 import sys
-
 import logging
 import traceback
+import json
+import threading
 
-import config
+# --- Tente usar o backend mss, se disponível ---
+try:
+    import mss
+    import mss.tools
+except ImportError:
+    mss = None
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
-                    handlers=[logging.StreamHandler(), logging.FileHandler(config.LOG_FILE, encoding="utf-8")])
+# --- Configuração do Logging ---
+# (A configuração do arquivo de log será ajustada após carregar o config.json)
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s",
+                    handlers=[logging.StreamHandler()])
 
+# --- Variáveis Globais de Estado ---
+APP_CONFIG = {}
+monitor_thread = None
+monitor_stop_event = threading.Event()
+monitor_status = "stopped"  # Pode ser 'stopped', 'running', 'stopping', 'error'
 
+# --- Carregamento da Configuração ---
+def load_settings():
+    """
+    Carrega as configurações do arquivo config.json.
+    Esta função substitui o antigo import config.
+    """
+    global APP_CONFIG, logging
+    try:
+        with open("config.json", "r", encoding="utf-8") as f:
+            APP_CONFIG = json.load(f)
+        # Reconfigura o logger para usar o arquivo de log do config
+        log_file = APP_CONFIG.get("LOG_FILE", "monitcam.log")
+        if APP_CONFIG.get("SAVE_LOGS", False):
+            file_handler = logging.FileHandler(log_file, encoding="utf-8")
+            logging.getLogger().addHandler(file_handler)
+        logging.info("Configuração carregada de config.json")
+    except FileNotFoundError:
+        logging.error("ERRO: O arquivo config.json não foi encontrado. A aplicação não pode iniciar.")
+        sys.exit(1)
+    except json.JSONDecodeError:
+        logging.error("ERRO: O arquivo config.json está mal formatado.")
+        sys.exit(1)
+
+# Mantém a função load_config para compatibilidade interna
+def load_config():
+    """Alias para load_settings() - mantém compatibilidade."""
+    load_settings()
+
+def save_config(new_config):
+    """Salva a nova configuração no arquivo config.json."""
+    global APP_CONFIG
+    try:
+        with open("config.json", "w") as f:
+            json.dump(new_config, f, indent=2)
+        APP_CONFIG = new_config
+        logging.info("Configuração salva em config.json")
+        return True
+    except Exception as e:
+        logging.error(f"Falha ao salvar a configuração: {e}")
+        return False
+
+# --- Lógica de Captura e Monitoramento (Adaptada do original) ---
 
 def choose_backend():
-    """Prefer mss (se disponível), fallback para pyautogui."""
     if mss is not None:
         logging.info("Backend escolhido: mss")
         return "mss"
     logging.info("Backend escolhido: pyautogui")
     return "pyautogui"
-
 
 def clamp_region_to_screen(region):
     screen_w, screen_h = pyautogui.size()
@@ -42,157 +87,135 @@ def clamp_region_to_screen(region):
     h = max(1, int(min(h, screen_h - top)))
     return (left, top, w, h)
 
-
 def capture_frame(region, backend):
-    """Captura uma região da tela de forma robusta, com fallbacks.
-    Retorna um frame em escala de cinza (numpy array).
-    """
     left, top, w, h = clamp_region_to_screen(region)
-
     try:
-        # Tenta o backend principal (mss é mais rápido)
         if backend == "mss" and mss is not None:
             with mss.mss() as sct:
                 monitor = {"left": left, "top": top, "width": w, "height": h}
                 img = sct.grab(monitor)
                 frame = np.array(img)
-                gray = cv2.cvtColor(frame[..., :3], cv2.COLOR_BGR2GRAY)
-                return ensure_frame_size(gray, w, h)
-        
-        # Fallback ou escolha principal: pyautogui
-        shot = pyautogui.screenshot(region=(left, top, w, h))
-        frame = np.array(shot)
-        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        return ensure_frame_size(gray, w, h)
-
+                return cv2.cvtColor(frame[..., :3], cv2.COLOR_BGR2GRAY)
+        else:
+            shot = pyautogui.screenshot(region=(left, top, w, h))
+            frame = np.array(shot)
+            return cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
     except Exception as e:
-        logging.warning("Falha ao capturar com backend '%s': %s. Tentando fallback.", backend, e)
-        # Tenta o backend alternativo
-        try:
-            if backend != "mss" and mss is not None: # Se o principal não era mss, tenta mss
-                with mss.mss() as sct:
-                    monitor = {"left": left, "top": top, "width": w, "height": h}
-                    img = sct.grab(monitor)
-                    frame = np.array(img)
-                    gray = cv2.cvtColor(frame[..., :3], cv2.COLOR_BGR2GRAY)
-                    return ensure_frame_size(gray, w, h)
-            else: # Se o principal era mss (ou mss não existe), tenta pyautogui
-                shot = pyautogui.screenshot(region=(left, top, w, h))
-                frame = np.array(shot)
-                gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-                return ensure_frame_size(gray, w, h)
-        except Exception as fallback_e:
-            logging.error("Fallback de captura também falhou: %s", fallback_e)
-
-    # Se tudo falhar, retorna um frame preto para não quebrar o loop.
-    logging.error("Todas as tentativas de captura falharam. Retornando frame preto.")
+        logging.error(f"Falha ao capturar frame com backend '{backend}': {e}")
     return np.zeros((h, w), dtype=np.uint8)
 
-def ensure_frame_size(img, target_w, target_h):
-    """Garante que `img` seja uma imagem em escala de cinza com tamanho (target_h, target_w)."""
-    if img is None:
-        return np.zeros((target_h, target_w), dtype=np.uint8)
-    # converte BGR->GRAY ou pega canal se BGRA
-    if img.ndim == 3:
-        if img.shape[2] == 3:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        else:
-            # reduz para um canal (ex: BGRA)
-            img = img[..., 0]
-    # agora img é 2D
-    img = img.astype(np.uint8)
-    h, w = img.shape
-    if (w, h) == (target_w, target_h):
-        return img
-    # crop central se maior
-    if h > target_h or w > target_w:
-        y0 = max(0, (h - target_h) // 2)
-        x0 = max(0, (w - target_w) // 2)
-        cropped = img[y0:y0+target_h, x0:x0+target_w]
-        # garante tamanho após crop
-        if cropped.shape == (target_h, target_w):
-            return cropped
-        # fallback para padding se necessário
-        img = cropped
-        h, w = img.shape
-    # pad central se menor
-    out = np.zeros((target_h, target_w), dtype=np.uint8)
-    y0 = (target_h - h) // 2
-    x0 = (target_w - w) // 2
-    out[y0:y0+h, x0:x0+w] = img
-    return out
+def run_monitor(config, stop_event):
+    """Função principal de monitoramento, projetada para rodar em uma thread."""
+    global monitor_status
+    monitor_status = "running"
+    logging.info("Thread de monitoramento iniciada.")
 
+    try:
+        backend = choose_backend()
+        cap_region = clamp_region_to_screen(config["CAPTURE_IMG"])
+        cmp_region = clamp_region_to_screen(config["COMPARE_IMG"])
+        
+        logging.info("Usando CAPTURE_IMG=%s COMPARE_IMG=%s sensitivity=%d interval=%.3f",
+                     cap_region, cmp_region, config["SENSIBILIDADE"], config["INTERVAL"])
 
-print("Iniciando monitoramento... Pressione Ctrl+C para parar.")
+        ultimo_cmp = capture_frame(cmp_region, backend)
+        
+        while not stop_event.is_set():
+            frame_A = capture_frame(cap_region, backend)
+            frame_B = capture_frame(cmp_region, backend)
 
-def run_monitor():
-    backend = choose_backend()
-
-    # Regiões de captura e comparação
-    cap_region = clamp_region_to_screen(config.CAPTURE_IMG)
-    cmp_region = clamp_region_to_screen(config.COMPARE_IMG)
-    
-    logging.info("Usando CAPTURE_IMG=%s COMPARE_IMG=%s sensitivity=%d interval=%.3f",
-                 cap_region, cmp_region, config.SENSIBILIDADE, config.INTERVAL)
-
-    # Captura inicial para estabelecer uma referência
-    ultimo_cmp = capture_frame(cmp_region, backend)
-    
-    while True:
-        # Captura a imagem de contexto (A) e a imagem de comparação (B)
-        frame_A = capture_frame(cap_region, backend)
-        frame_B = capture_frame(cmp_region, backend)
-
-        # Compara a imagem de comparação atual com a anterior
-        diferenca = cv2.absdiff(ultimo_cmp, frame_B)
-        diferenca_blur = cv2.GaussianBlur(diferenca, config.BLUR_KERNEL_SIZE, 0)
-        _, diferenca_thresh = cv2.threshold(diferenca_blur, config.DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
-
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, config.MORPH_KERNEL)
-        diferenca_thresh = cv2.morphologyEx(diferenca_thresh, cv2.MORPH_OPEN, kernel)
-        score = int(cv2.countNonZero(diferenca_thresh))
-
-        if score > config.SENSIBILIDADE:
-            horario = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-            logging.info("Movimento detectado na COMPARE_IMG! score=%d -> salvando...", score)
+            diferenca = cv2.absdiff(ultimo_cmp, frame_B)
+            diferenca_blur = cv2.GaussianBlur(diferenca, tuple(config["BLUR_KERNEL_SIZE"]), 0)
+            _, diferenca_thresh = cv2.threshold(diferenca_blur, config["DIFF_THRESHOLD"], 255, cv2.THRESH_BINARY)
             
-            os.makedirs(config.CAPTURE_DIR, exist_ok=True)
-            
-            arquivoA = os.path.join(config.CAPTURE_DIR, f"{config.FILENAME_PREFIX}_{horario}_A.png")
-            cv2.imwrite(arquivoA, frame_A)
-            logging.info("Salvo: %s", arquivoA)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, tuple(config["MORPH_KERNEL"]))
+            diferenca_thresh = cv2.morphologyEx(diferenca_thresh, cv2.MORPH_OPEN, kernel)
+            score = int(cv2.countNonZero(diferenca_thresh))
 
-            if config.SAVE_COMPARE_IMG:
-                arquivoB = os.path.join(config.CAPTURE_DIR, f"{config.FILENAME_PREFIX}_{horario}_B.png")
-                cv2.imwrite(arquivoB, frame_B)
-                logging.info("Salvo: %s", arquivoB)
+            if score > config["SENSIBILIDADE"]:
+                horario = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+                logging.info(f"Movimento detectado! score={score} -> salvando...")
+                
+                os.makedirs(config["CAPTURE_DIR"], exist_ok=True)
+                arquivoA = os.path.join(config["CAPTURE_DIR"], f"{config['FILENAME_PREFIX']}_{horario}_A.png")
+                cv2.imwrite(arquivoA, frame_A)
 
-            # Atualiza referência e aguarda para evitar ruído repetido
-            ultimo_cmp = frame_B
-            time.sleep(config.INTERVAL * 2)
-            continue
+                if config["SAVE_COMPARE_IMG"]:
+                    arquivoB = os.path.join(config["CAPTURE_DIR"], f"{config['FILENAME_PREFIX']}_{horario}_B.png")
+                    cv2.imwrite(arquivoB, frame_B)
 
-        ultimo_cmp = frame_B
-        time.sleep(config.INTERVAL)
+                ultimo_cmp = frame_B
+                stop_event.wait(config["INTERVAL"] * 2)
+            else:
+                ultimo_cmp = frame_B
+                stop_event.wait(config["INTERVAL"])
 
+    except Exception as e:
+        monitor_status = "error"
+        logging.error(f"Erro fatal na thread de monitoramento: {e}")
+        with open(APP_CONFIG.get("ERROR_LOG_FILE", "monitcam_error.log"), "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now().isoformat()} - Exception:\n")
+            traceback.print_exc(file=f)
+            f.write("\n")
+    finally:
+        if monitor_status != "error":
+            monitor_status = "stopped"
+        logging.info("Thread de monitoramento finalizada.")
 
-def main():
-    delay = config.RESTART_BASE_DELAY
-    while True:
-        try:
-            run_monitor()
-        except KeyboardInterrupt:
-            logging.info("Monitor interrompido pelo usuário.")
-            break
-        except Exception as e:
-            logging.error("Erro fatal no monitor: %s", e)
-            with open(config.ERROR_LOG_FILE, "a", encoding="utf-8") as f:
-                f.write(f"{datetime.now().isoformat()} - Exception:\n")
-                traceback.print_exc(file=f)
-                f.write("\n")
-            logging.info("Reiniciando em %d segundos...", delay)
-            time.sleep(delay)
-            delay = min(delay * 2, config.RESTART_MAX_DELAY)
+# --- Funções de Controle de Monitoramento ---
+def start_monitoring():
+    """Inicia o monitoramento."""
+    global monitor_thread, monitor_stop_event, monitor_status
+    
+    if monitor_thread is not None and monitor_thread.is_alive():
+        logging.warning("O monitoramento já está em execução.")
+        return {"success": False, "message": "O monitoramento já está em execução."}
 
-if __name__ == "__main__":
-    main()
+    monitor_stop_event.clear()
+    monitor_thread = threading.Thread(target=run_monitor, args=(APP_CONFIG, monitor_stop_event))
+    monitor_thread.start()
+    logging.info("Monitoramento iniciado.")
+    return {"success": True, "message": "Monitoramento iniciado."}
+
+def stop_monitoring():
+    """Para o monitoramento."""
+    global monitor_thread, monitor_status
+    
+    if monitor_thread is None or not monitor_thread.is_alive():
+        monitor_status = "stopped"
+        logging.warning("O monitoramento não está em execução.")
+        return {"success": False, "message": "O monitoramento não está em execução."}
+
+    logging.info("Parando o monitoramento...")
+    monitor_status = "stopping"
+    monitor_stop_event.set()
+    
+    # Aguarda a thread terminar
+    monitor_thread.join(timeout=APP_CONFIG.get("INTERVAL", 1) * 3) 
+    
+    if monitor_thread.is_alive():
+        logging.warning("A thread de monitoramento não parou a tempo.")
+        return {"success": False, "message": "A thread não respondeu ao comando de parada."}
+
+    monitor_thread = None
+    monitor_status = "stopped"
+    logging.info("Monitoramento parado com sucesso.")
+    return {"success": True, "message": "Monitoramento parado."}
+
+def get_monitor_status():
+    """Retorna o status atual do monitoramento."""
+    return {"status": monitor_status}
+
+def get_config():
+    """Retorna a configuração atual."""
+    return APP_CONFIG
+
+def update_config(new_config):
+    """Atualiza a configuração."""
+    if monitor_status == 'running':
+        return {"success": False, "message": "Pare o monitoramento antes de alterar a configuração."}
+    
+    if save_config(new_config):
+        return {"success": True, "message": "Configuração salva."}
+    else:
+        return {"success": False, "message": "Falha ao salvar a configuração."}
