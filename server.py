@@ -28,6 +28,15 @@ def index():
     return send_file('index.html')
 
 
+@app.route('/favicon.ico')
+def favicon():
+    """Serve o favicon.ico"""
+    try:
+        return send_file('favicon.ico', mimetype='image/x-icon')
+    except FileNotFoundError:
+        return '', 204  # Retorna resposta vazia se não encontrar
+
+
 @app.route('/<path:filename>')
 def serve_static(filename):
     """Serve arquivos estáticos (CSS, JS)"""
@@ -47,8 +56,8 @@ def get_config():
             default_config = {
                 "CAPTURE_IMG": [320, 75, 730, 412],
                 "COMPARE_IMG": [600, 75, 150, 250],
-                "SENSIBILIDADE": 1000,
-                "INTERVAL": 0.32,
+                "SENSIBILIDADE": 80,
+                "INTERVAL": 0.333,
                 "DELAY_SELECAO": 3,
                 "BLUR_KERNEL_SIZE": [5, 5],
                 "DIFF_THRESHOLD": 25,

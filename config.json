@@ -1,29 +1,20 @@
 {
-  "SENSIBILIDADE": 1000,
-  "INTERVAL": 0.32,
-  "DELAY_SELECAO": 5,
-  "DIFF_THRESHOLD": 25,
+  "SENSIBILIDADE": 80,
+  "INTERVAL": 0.333,
+  "DELAY_SELECAO": 7.5,
   "CAPTURE_DIR": "captures",
   "FILENAME_PREFIX": "suspeito",
   "CAPTURE_IMG": [
     325,
-    82,
-    1273,
+    81,
+    1269,
     713
   ],
   "COMPARE_IMG": [
-    701,
-    80,
-    459,
-    575
-  ],
-  "BLUR_KERNEL_SIZE": [
-    5,
-    5
-  ],
-  "MORPH_KERNEL": [
-    3,
-    3
+    795,
+    81,
+    297,
+    427
   ],
   "SAVE_COMPARE_IMG": false,
   "SAVE_LOGS": false

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MonitCamV2 - Painel de Controle</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -46,27 +47,27 @@
                     <!-- Coluna 1 -->
                     <div class="form-column">
                         <div class="form-group">
-                            <label for="SENSIBILIDADE">Sensibilidade da Detecção</label>
-                            <input type="number" id="SENSIBILIDADE" name="SENSIBILIDADE">
-                            <small>Mais pixels para detectar. (Padrão: 1000)</small>
+                            <label for="SENSIBILIDADE">Sensibilidade da Detecção (%)</label>
+                            <input type="range" id="SENSIBILIDADE" name="SENSIBILIDADE" min="1" max="100" step="1">
+                            <output for="SENSIBILIDADE" id="SENSIBILIDADE-value">80</output>%
+                            <small>100% detecta tudo (muito sensível), 1% detecta apenas grandes mudanças. (Padrão: 80%)</small>
                         </div>
 
                         <div class="form-group">
-                            <label for="INTERVAL">Intervalo entre Capturas (s)</label>
-                            <input type="number" step="0.01" id="INTERVAL" name="INTERVAL">
-                            <small>Segundos. Menor = mais uso de CPU. (Padrão: 0.32)</small>
+                            <label for="INTERVAL">Fotos por Segundo</label>
+                            <select id="INTERVAL" name="INTERVAL">
+                                <option value="1">1 Foto por segundo</option>
+                                <option value="2">2 Fotos por segundo</option>
+                                <option value="3">3 Fotos por segundo</option>
+                                <option value="4">4 Fotos por segundo</option>
+                            </select>
+                            <small>Mais fotos = detecção mais rápida, mas maior uso de CPU. (Padrão: 3 fps)</small>
                         </div>
 
                         <div class="form-group">
-                            <label for="DELAY_SELECAO">Tempo de Espera (Seleção)</label>
-                            <input type="number" step="0.5" id="DELAY_SELECAO" name="DELAY_SELECAO">
+                            <label for="DELAY_SELECAO">Tempo de Espera (Seleção) (s)</label>
+                            <input type="number" step="0.5" min="3" max="25" id="DELAY_SELECAO" name="DELAY_SELECAO">
                             <small>Segundos antes de iniciar a seleção. (Padrão: 3)</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="DIFF_THRESHOLD">Limiar de Diferença</label>
-                            <input type="number" id="DIFF_THRESHOLD" name="DIFF_THRESHOLD">
-                            <small>Quão diferente o pixel deve ser. (Padrão: 25)</small>
                         </div>
                         
                         <div class="form-group">
@@ -98,18 +99,6 @@
                             <small>Área onde o movimento é detectado.</small>
                         </div>
 
-                        <div class="form-group">
-                            <label for="BLUR_KERNEL_SIZE">Kernel de Desfoque (w,h)</label>
-                            <input type="text" id="BLUR_KERNEL_SIZE" name="BLUR_KERNEL_SIZE">
-                            <small>Números ímpares. Reduz ruído. (Padrão: 5,5)</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="MORPH_KERNEL">Kernel de Morfologia (w,h)</label>
-                            <input type="text" id="MORPH_KERNEL" name="MORPH_KERNEL">
-                            <small>Remove falsos positivos. (Padrão: 3,3)</small>
-                        </div>
-
                         <div class="form-group-checkbox">
                             <label for="SAVE_COMPARE_IMG">Salvar Imagem de Comparação?</label>
                             <input type="checkbox" id="SAVE_COMPARE_IMG" name="SAVE_COMPARE_IMG">
@@ -124,6 +113,7 @@
 
                 <div class="form-actions">
                     <button type="submit" id="save-btn" disabled>Salvar Alterações</button>
+                    <button type="button" id="discard-btn" disabled>Descartar Alterações</button>
                     <span id="save-status"></span>
                 </div>
             </form>

@@ -1,7 +1,30 @@
 @echo off
 setlocal enabledelayedexpansion
-rem Simple runner for Windows CMD: create venv, install deps, and run start.py
+rem Lançador inteligente do MonitCam: verifica instância rodando antes de iniciar
 
+rem ========== VERIFICAÇÃO DE INSTÂNCIA RODANDO ==========
+echo Verificando se MonitCam ja esta em execucao...
+
+rem Verifica se a porta 5000 está ocupada
+netstat -ano | findstr ":5000" | findstr "LISTENING" >nul 2>nul
+if %ERRORLEVEL%==0 (
+  echo.
+  echo ========================================
+  echo  MonitCam ja esta em execucao!
+  echo ========================================
+  echo.
+  echo Abrindo navegador em http://127.0.0.1:5000
+  start http://127.0.0.1:5000
+  echo.
+  echo Para encerrar o MonitCam, va ao CMD onde ele esta rodando e pressione Ctrl+C
+  timeout /t 3 >nul
+  exit /b 0
+)
+
+echo Nenhuma instancia detectada. Iniciando MonitCam...
+echo.
+
+rem ========== DETECÇÃO DO PYTHON ==========
 rem Detecta um comando Python utilizavel (tenta: py, python, python3)
 set "SYSTEM_PY="
 echo Detectando interpretador Python...

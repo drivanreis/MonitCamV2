@@ -56,6 +56,37 @@ def load_config():
     """Alias para load_settings() - mantém compatibilidade."""
     load_settings()
 
+def calculate_pixel_threshold(compare_region, sensitivity_percent):
+    """
+    Calcula o limiar de pixels baseado na área da região de comparação e no percentual de sensibilidade.
+    
+    Args:
+        compare_region: Tupla (x, y, w, h) da região de comparação
+        sensitivity_percent: Valor de 1 a 100, onde:
+            - 100% = detecta qualquer mudança (limiar próximo a 0)
+            - 1% = detecta apenas mudanças muito grandes (limiar próximo à área total)
+    
+    Returns:
+        int: Limiar de pixels para detecção
+    
+    Fórmula: T = A × (1 - (sensibilidade / 100))
+    """
+    _, _, w, h = compare_region
+    area = w * h
+    
+    # Garante que o percentual está entre 1 e 100
+    sensitivity_percent = max(1, min(100, sensitivity_percent))
+    
+    # Calcula o limiar: quanto maior a sensibilidade, menor o limiar
+    threshold = int(area * (1 - (sensitivity_percent / 100)))
+    
+    # Garante um mínimo de 1 pixel para evitar detecções espúrias em 100%
+    threshold = max(1, threshold)
+    
+    logging.info(f"Área da região: {area} pixels | Sensibilidade: {sensitivity_percent}% | Limiar calculado: {threshold} pixels")
+    
+    return threshold
+
 def save_config(new_config):
     """Salva a nova configuração no arquivo config.json."""
     global APP_CONFIG
@@ -105,18 +136,33 @@ def capture_frame(region, backend):
     return np.zeros((h, w), dtype=np.uint8)
 
 def run_monitor(config, stop_event):
-    """Função principal de monitoramento, projetada para rodar em uma thread."""
+    """
+    Função principal de monitoramento, projetada para rodar em uma thread.
+    
+    Configurações técnicas fixas otimizadas:
+    - DIFF_THRESHOLD: 25 (sensibilidade de diferença de pixel)
+    - BLUR_KERNEL_SIZE: (5, 5) (redução de ruído)
+    - MORPH_KERNEL: (3, 3) (remoção de falsos positivos)
+    """
     global monitor_status
     monitor_status = "running"
     logging.info("Thread de monitoramento iniciada.")
+    
+    # Configurações técnicas fixas otimizadas para a maioria dos cenários
+    DIFF_THRESHOLD = 25
+    BLUR_KERNEL_SIZE = (5, 5)
+    MORPH_KERNEL = (3, 3)
 
     try:
         backend = choose_backend()
         cap_region = clamp_region_to_screen(config["CAPTURE_IMG"])
         cmp_region = clamp_region_to_screen(config["COMPARE_IMG"])
         
-        logging.info("Usando CAPTURE_IMG=%s COMPARE_IMG=%s sensitivity=%d interval=%.3f",
-                     cap_region, cmp_region, config["SENSIBILIDADE"], config["INTERVAL"])
+        # Calcula o limiar de pixels baseado no percentual de sensibilidade
+        pixel_threshold = calculate_pixel_threshold(cmp_region, config["SENSIBILIDADE"])
+        
+        logging.info("Usando CAPTURE_IMG=%s COMPARE_IMG=%s sensitivity=%d%% (limiar=%d pixels) interval=%.3f",
+                     cap_region, cmp_region, config["SENSIBILIDADE"], pixel_threshold, config["INTERVAL"])
 
         ultimo_cmp = capture_frame(cmp_region, backend)
         
@@ -125,14 +171,14 @@ def run_monitor(config, stop_event):
             frame_B = capture_frame(cmp_region, backend)
 
             diferenca = cv2.absdiff(ultimo_cmp, frame_B)
-            diferenca_blur = cv2.GaussianBlur(diferenca, tuple(config["BLUR_KERNEL_SIZE"]), 0)
-            _, diferenca_thresh = cv2.threshold(diferenca_blur, config["DIFF_THRESHOLD"], 255, cv2.THRESH_BINARY)
+            diferenca_blur = cv2.GaussianBlur(diferenca, BLUR_KERNEL_SIZE, 0)
+            _, diferenca_thresh = cv2.threshold(diferenca_blur, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
             
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, tuple(config["MORPH_KERNEL"]))
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, MORPH_KERNEL)
             diferenca_thresh = cv2.morphologyEx(diferenca_thresh, cv2.MORPH_OPEN, kernel)
             score = int(cv2.countNonZero(diferenca_thresh))
 
-            if score > config["SENSIBILIDADE"]:
+            if score > pixel_threshold:
                 horario = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
                 logging.info(f"Movimento detectado! score={score} -> salvando...")
                 
@@ -195,6 +241,8 @@ def stop_monitoring():
     
     if monitor_thread.is_alive():
         logging.warning("A thread de monitoramento não parou a tempo.")
+        monitor_status = "stopped"  # Marca como parado mesmo assim
+        monitor_thread = None
         return {"success": False, "message": "A thread não respondeu ao comando de parada."}
 
     monitor_thread = None
