@@ -6,15 +6,15 @@
   "FILENAME_PREFIX": "suspeito",
   "CAPTURE_IMG": [
     325,
-    81,
-    1269,
-    713
+    85,
+    714,
+    398
   ],
   "COMPARE_IMG": [
-    795,
-    81,
-    297,
-    427
+    590,
+    84,
+    186,
+    242
   ],
   "SAVE_COMPARE_IMG": false,
   "SAVE_LOGS": false
