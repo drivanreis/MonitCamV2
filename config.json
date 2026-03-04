@@ -1,20 +1,20 @@
 {
   "SENSIBILIDADE": 80,
-  "INTERVAL": 0.333,
+  "INTERVAL": 0.25,
   "DELAY_SELECAO": 7.5,
   "CAPTURE_DIR": "captures",
   "FILENAME_PREFIX": "suspeito",
   "CAPTURE_IMG": [
-    325,
-    85,
-    714,
-    398
+    21,
+    3,
+    1877,
+    1069
   ],
   "COMPARE_IMG": [
-    590,
-    84,
-    186,
-    242
+    76,
+    592,
+    906,
+    482
   ],
   "SAVE_COMPARE_IMG": false,
   "SAVE_LOGS": false
