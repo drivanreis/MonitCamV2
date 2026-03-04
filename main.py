@@ -118,7 +118,18 @@ def clamp_region_to_screen(region):
     h = max(1, int(min(h, screen_h - top)))
     return (left, top, w, h)
 
-def capture_frame(region, backend):
+def capture_frame(region, backend, color=False):
+    """
+    Captura um frame da tela.
+    
+    Args:
+        region: Tupla (x, y, w, h) da região a capturar
+        backend: Backend de captura ('mss' ou 'pyautogui')
+        color: Se True, retorna imagem colorida (BGR). Se False, retorna em escala de cinza.
+    
+    Returns:
+        np.array: Frame capturado
+    """
     left, top, w, h = clamp_region_to_screen(region)
     try:
         if backend == "mss" and mss is not None:
@@ -126,14 +137,27 @@ def capture_frame(region, backend):
                 monitor = {"left": left, "top": top, "width": w, "height": h}
                 img = sct.grab(monitor)
                 frame = np.array(img)
-                return cv2.cvtColor(frame[..., :3], cv2.COLOR_BGR2GRAY)
+                frame_bgr = frame[..., :3]  # Remove canal alfa, mantém BGR
+                if color:
+                    return frame_bgr
+                else:
+                    return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
         else:
             shot = pyautogui.screenshot(region=(left, top, w, h))
             frame = np.array(shot)
-            return cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # Converte RGB para BGR
+            if color:
+                return frame_bgr
+            else:
+                return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     except Exception as e:
         logging.error(f"Falha ao capturar frame com backend '{backend}': {e}")
-    return np.zeros((h, w), dtype=np.uint8)
+    
+    # Retorna imagem vazia apropriada ao tipo solicitado
+    if color:
+        return np.zeros((h, w, 3), dtype=np.uint8)
+    else:
+        return np.zeros((h, w), dtype=np.uint8)
 
 def run_monitor(config, stop_event):
     """
@@ -164,13 +188,18 @@ def run_monitor(config, stop_event):
         logging.info("Usando CAPTURE_IMG=%s COMPARE_IMG=%s sensitivity=%d%% (limiar=%d pixels) interval=%.3f",
                      cap_region, cmp_region, config["SENSIBILIDADE"], pixel_threshold, config["INTERVAL"])
 
-        ultimo_cmp = capture_frame(cmp_region, backend)
+        # Captura inicial em escala de cinza para comparação
+        ultimo_cmp = capture_frame(cmp_region, backend, color=False)
         
         while not stop_event.is_set():
-            frame_A = capture_frame(cap_region, backend)
-            frame_B = capture_frame(cmp_region, backend)
+            # Captura imagem colorida para salvar
+            frame_A_color = capture_frame(cap_region, backend, color=True)
+            
+            # Captura imagem de comparação em escala de cinza para análise
+            frame_B_gray = capture_frame(cmp_region, backend, color=False)
 
-            diferenca = cv2.absdiff(ultimo_cmp, frame_B)
+            # Compara em escala de cinza (mais rápido)
+            diferenca = cv2.absdiff(ultimo_cmp, frame_B_gray)
             diferenca_blur = cv2.GaussianBlur(diferenca, BLUR_KERNEL_SIZE, 0)
             _, diferenca_thresh = cv2.threshold(diferenca_blur, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
             
@@ -183,17 +212,20 @@ def run_monitor(config, stop_event):
                 logging.info(f"Movimento detectado! score={score} -> salvando...")
                 
                 os.makedirs(config["CAPTURE_DIR"], exist_ok=True)
+                
+                # Salva a imagem COLORIDA da região de captura
                 arquivoA = os.path.join(config["CAPTURE_DIR"], f"{config['FILENAME_PREFIX']}_{horario}_A.png")
-                cv2.imwrite(arquivoA, frame_A)
+                cv2.imwrite(arquivoA, frame_A_color)
 
+                # Se configurado, salva a imagem de comparação em escala de cinza
                 if config["SAVE_COMPARE_IMG"]:
                     arquivoB = os.path.join(config["CAPTURE_DIR"], f"{config['FILENAME_PREFIX']}_{horario}_B.png")
-                    cv2.imwrite(arquivoB, frame_B)
+                    cv2.imwrite(arquivoB, frame_B_gray)
 
-                ultimo_cmp = frame_B
+                ultimo_cmp = frame_B_gray
                 stop_event.wait(config["INTERVAL"] * 2)
             else:
-                ultimo_cmp = frame_B
+                ultimo_cmp = frame_B_gray
                 stop_event.wait(config["INTERVAL"])
 
     except Exception as e:
